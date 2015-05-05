@@ -8,19 +8,16 @@ import tarfile
 
 def main(argv):
 
-    # if len(argv) < 3:
-    #     print 'usage: python %s description annotation' % sys.argv[0]
-    #     sys.exit(1)
-
     description = "RNAseq data from ENCODE evaluation"
     annotationId = "Gencodev16"
 
-    tar = tarfile.open('ENCODE-benchmark-data.tgz', 'r')
+    #tar = tarfile.open('ENCODE-benchmark-data.tgz', 'r')
+    tar = tarfile.open(argv[1], 'r')
 
-    #write_rnaseq_tables(tar, description, annotationId)
+    write_rnaseq_tables(tar, description, annotationId)
     write_counts_tables(tar)
     #write_dist_tables(tar)
-    #write_expression_tables(tar, annotationId)
+    write_expression_tables(tar, annotationId)
 
     tar.close()
 
@@ -101,73 +98,6 @@ def get_members_from_tar(tar, name):
             yield (sample, tar.extractfile(member))
 
 
-def write_expression(analysisId, annotationId, quantfile, quantOutfile, tool='RSEM'):
-    def writerpkms(analysisId, annotationId, isNormalized, units, rpkmfile, rpkmOutfile):
-        for transcript in rpkmfile.readlines():
-            fields = transcript.split("\t")
-            content = {}
-            content['seqname'] = fields[0]
-            content['source'] = fields[1]
-            content['feature'] = fields[2]
-            content['start'] = fields[3]
-            content['end'] = fields[4]
-            content['score'] = fields[5]
-            content['strand'] = fields[6]
-            content['frame'] = fields[7]
-            attrList = (attr.strip() for attr in filter(None, fields[8].strip().split(';')))
-            content['attribute'] = dict((attr.split()[0].strip(), attr.split()[1].strip("\"")) for attr in attrList)
-
-            expressionLevel = content['attribute']['RPKM']
-            featureGroupId =  content['attribute']['transcript_id']
-            expressionId = analysisId + "-{seqname}:{start}-{end}".format(**content)
-            rawCount = content['attribute']['reads']
-            score = content['score']
-            outline = string.join([expressionId, annotationId, expressionLevel, featureGroupId, isNormalized, rawCount, score, units], "\t")
-            rpkmOutfile.write("%s\n" % outline)
-
-    def writefpkms(analysisId, annotationId, isNormalized, units, fpkmfile, fpkmOutfile):
-        header = fpkmfile.readline()
-        for expression in fpkmfile.readlines():
-            fields = expression.split("\t")
-            expressionLevel = fields[9]
-            featureGroupId = fields[4]
-            expressionId = fields[0]
-            rawCount = getCount(expressionId)
-            score = getScore(expressionId)
-            outline = string.join([expressionId, annotationId, expressionLevel, featureGroupId, isNormalized, rawCount, score, units], "\t")
-            fpkmOutfile.write("%s\n" % outline)
-
-    def writecpms(analysisId, annotationId, isNormalized, units, cpmfile, cpmOutfile):
-        #gene_id transcript_id(s)    length  effective_length    expected_count  TPM FPKM    pme_expected_count  
-        #pme_TPM pme_FPKM    TPM_ci_lower_bound  TPM_ci_upper_bound  FPKM_ci_lower_bound FPKM_ci_upper_bound
-        header = cpmfile.readline()
-        for expression in cpmfile.readlines():
-            fields = expression.split("\t")
-            expressionLevel = fields[5]
-            featureGroupId = fields[0]
-            expressionId = analysisId
-            rawCount = fields[4]
-            score = (float(fields[10]) + float(fields[11]))/2
-            outline = string.join([expressionId, annotationId, expressionLevel, featureGroupId, isNormalized, rawCount, str(score), units], "\t")
-            cpmOutfile.write("%s\n" % outline)
-
-    if tool == 'RSEM':
-        #TODO: placeholder values need to be calculated then removed
-        isNormalized = "True"
-        units = "CPM"
-        writecpms(analysisId, annotationId, isNormalized, units, quantfile, quantOutfile)
-    elif tool == 'FLUX':
-        #TODO: placeholder values need to be calculated then removed
-        isNormalized = "True"
-        units = "RPKM"
-        writerpkms(analysisId, annotationId, isNormalized, units, quantfile, quantOutfile)
-    elif tool == 'CUFFLINKS':
-        #TODO: placeholder values need to be calculated then removed
-        isNormalized = "True"
-        units = "FPKM"
-        writefpkms(analysisId, annotationId, isNormalized, units, quantfile, quantOutfile)
-
-
 #TODO: placeholder values need to be calculated then removed
 def getCount(expressionId):
     rawCount = 0
@@ -225,6 +155,25 @@ def getDistribution(file):
 def writeDistribution(outfile, contents, analysisId, fraction):
     outline = string.join([analysisId, str(contents["exon"]), fraction, str(contents["intergenic"]), str(contents["intron"])], "\t")
     outfile.write("%s\n" % outline)
+
+
+def write_expression(analysisId, annotationId, quantfile, quantOutfile, tool='RSEM'):
+    # RSEM gene expression table header:
+    #   gene_id transcript_id(s)    length  effective_length    expected_count  TPM FPKM    pme_expected_count  
+    #   pme_TPM pme_FPKM    TPM_ci_lower_bound  TPM_ci_upper_bound  FPKM_ci_lower_bound FPKM_ci_upper_bound
+    # TODO: placeholder values need to be calculated then removed
+    isNormalized = "True"
+    units = "CPM"
+    header = quantfile.readline()
+    for expression in quantfile.readlines():
+        fields = expression.split("\t")
+        expressionLevel = fields[5]
+        featureGroupId = fields[0]
+        expressionId = analysisId
+        rawCount = fields[4]
+        score = (float(fields[10]) + float(fields[11]))/2
+        outline = string.join([expressionId, annotationId, expressionLevel, featureGroupId, isNormalized, rawCount, str(score), units], "\t")
+        quantOutfile.write("%s\n" % outline)
 
 
 if __name__ == '__main__':
