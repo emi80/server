@@ -5,5 +5,10 @@
 The script will take care of downloading the data tarball and extract the required information from there. Just run it as follows to get the results in your current folder:
 
 ```shell
-./encodeEvaluation2ga.py 
+$ ./encodeEvaluation2ga.py
+== Downloading tarball from http://genome.crg.es/~epalumbo/ENCODE-benchmark-data.tgz
+== Writing rnaseq tables
+== Writing counts tables
+== Writing gene expression tables
+== DONE
 ```
