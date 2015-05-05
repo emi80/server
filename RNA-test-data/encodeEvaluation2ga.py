@@ -6,7 +6,7 @@ import sys
 import errno
 import string
 import tarfile
-import requests
+import urllib2
 import tempfile
 
 
@@ -16,12 +16,13 @@ def log(message):
 
 def get_tarball(tarball_url):
     tmp_tarball = tempfile.NamedTemporaryFile(mode='w+b')
-    r = requests.get(tarball_url, stream=True)
+    request = urllib2.urlopen(tarball_url)
+    CHUNK = 16 * 1024
     log('Downloading tarball from {0}'.format(tarball_url))
-    for chunk in r.iter_content(chunk_size=1024): 
-        if chunk: # filter out keep-alive new chunks
-            tmp_tarball.write(chunk)
-            tmp_tarball.flush()
+    for chunk in iter(lambda: request.read(CHUNK), ''):
+        if not chunk: break
+        tmp_tarball.write(chunk)
+        tmp_tarball.flush()
     return tmp_tarball
 
 
