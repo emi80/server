@@ -5,5 +5,5 @@
 The script will take care of downloading the data tarball and extract the required information from there. Just run it as follows to get the results in your current folder:
 
 ```shell
- ./encodeEvaluation2ga.py 
+./encodeEvaluation2ga.py 
 ```
