@@ -3,27 +3,55 @@ from __future__ import division
 
 import os
 import sys
+import json
 import errno
-import string
-import tarfile
 import urllib2
-import tempfile
+
+class bcolors:
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
 
 
-def log(message):
-    print >>sys.stderr, "== {}".format(message)
+def log(message): 
+    print >>sys.stderr,  "== " + bcolors.OKGREEN + "{}".format(message) + bcolors.ENDC
 
 
-def get_tarball(tarball_url):
-    tmp_tarball = tempfile.NamedTemporaryFile(mode='w+b')
-    request = urllib2.urlopen(tarball_url)
-    CHUNK = 16 * 1024
-    log('Downloading tarball from {0}'.format(tarball_url))
-    for chunk in iter(lambda: request.read(CHUNK), ''):
-        if not chunk: break
-        tmp_tarball.write(chunk)
-        tmp_tarball.flush()
-    return tmp_tarball
+def get_files_from_host(data, host, output_type, request=False, subset=None):
+    file_list = [ f for f in data.get('files') if f.get('output_type') == output_type ]
+    if subset:
+        file_list = file_list[:subset]
+    for f in file_list:
+        experiment = f.get('dataset').split('/')[-2]
+        replicate = str(f.get('replicate').get('biological_replicate_number'))
+        analysisId = "_".join((experiment, replicate))
+        
+        if not request:
+            yield analysisId
+        else:
+            href = f.get('href')
+            url = "{host}{file}".format(host=host, file=href)
+            yield (analysisId, urllib2.urlopen(url))
+
+
+def get_data_from_host(url, headers, host, output_type, output_folder, description, annotationId, subset=None):
+    req = urllib2.Request(url, headers=headers)
+    try:
+        response = urllib2.urlopen(req)
+    except URLError as e:
+        if hasattr(e, 'reason'):
+            print 'We failed to reach a server.'
+            print 'Reason: ', e.reason
+        elif hasattr(e, 'code'):
+            print 'The server couldn\'t fulfill the request.'
+            print 'Error code: ', e.code
+    else:
+        json_data = json.load(response)
+        make_dir(output_folder)
+        write_rnaseq_tables(get_files_from_host(json_data, host, output_type, subset=subset), description, annotationId, output_folder)
+        write_expression_tables(get_files_from_host(json_data, host, output_type, subset=subset, request=True), annotationId, output_folder)
 
 
 def make_dir(path):
@@ -32,29 +60,6 @@ def make_dir(path):
     except OSError as exception:
         if exception.errno != errno.EEXIST:
             raise
-
-
-def get_analysis_ids_from_tar(tar):
-    for member in tar:
-        if member.isdir():
-            dirname, base = os.path.split(member.name)
-            if not dirname:
-                continue
-            if os.path.split(dirname)[0]:
-                continue
-            yield base
-
-
-def get_members_from_tar(tar, name):
-    if not name:
-        return
-    for member in tar:
-        if name in member.name:
-            dirname = os.path.dirname(member.name)
-            sample = os.path.basename(dirname)
-            base = os.path.basename(member.name)
-            member.name = "{0}_{1}".format(sample, base)
-            yield (sample, tar.extractfile(member))
 
 
 #TODO: placeholder values need to be calculated then removed
@@ -73,7 +78,7 @@ def writeRNAQuant(outfile, analysisId, description, annotationId):
     """ Using placeholder value for the readGroupId
         Currently name is set to be same as analysisId
     """
-    outline = string.join([analysisId, annotationId, description, analysisId, "readGroupId"], "\t")
+    outline = "\t".join([analysisId, annotationId, description, analysisId, "readGroupId"])
     outfile.write("%s\n" % outline)
 
 
@@ -97,7 +102,7 @@ def getSamstats(file):
 
 
 def writeSamstats(outfile, contents, analysisId):
-    outline = string.join([analysisId, str(contents["multi"]), contents["msplice"], contents["readcount"], contents["unique"], contents["usplice"]], "\t")
+    outline = "\t".join([analysisId, str(contents["multi"]), contents["msplice"], contents["readcount"], contents["unique"], contents["usplice"]])
     outfile.write("%s\n" % outline)
 
 
@@ -112,7 +117,7 @@ def getDistribution(file):
 
 
 def writeDistribution(outfile, contents, analysisId, fraction):
-    outline = string.join([analysisId, str(contents["exon"]), fraction, str(contents["intergenic"]), str(contents["intron"])], "\t")
+    outline = "\t".join([analysisId, str(contents["exon"]), fraction, str(contents["intergenic"]), str(contents["intron"])])
     outfile.write("%s\n" % outline)
 
 
@@ -131,27 +136,27 @@ def write_expression(analysisId, annotationId, quantfile, quantOutfile, tool='RS
         expressionId = analysisId
         rawCount = fields[4]
         score = (float(fields[10]) + float(fields[11]))/2
-        outline = string.join([expressionId, annotationId, expressionLevel, featureGroupId, isNormalized, rawCount, str(score), units], "\t")
+        outline = "\t".join([expressionId, annotationId, expressionLevel, featureGroupId, isNormalized, rawCount, str(score), units])
         quantOutfile.write("%s\n" % outline)
 
 
-def write_rnaseq_tables(tar, description, annotationId):
+def write_rnaseq_tables(analysisIds, description, annotationId, output_folder):
     log("Writing rnaseq tables")
-    for analysisId in get_analysis_ids_from_tar(tar):
+    for analysisId in analysisIds:
         # create analysis id folder
-        make_dir(analysisId)
+        make_dir(os.path.join(output_folder,analysisId))
 
         # output table
-        rnaSeqTable = os.path.join(analysisId, "rnaseq.table")
+        rnaSeqTable = os.path.join(output_folder, analysisId, "rnaseq.table")
 
         # write rnaseq table
         with open(rnaSeqTable, "w") as rnaQuantFile:
             writeRNAQuant(rnaQuantFile, analysisId, description, annotationId)
 
 
-def write_counts_tables(tar):
+def write_counts_tables(data):
     log("Writing counts tables")
-    for analysisId, samstatsfile in get_members_from_tar(tar, 'Log.final.out'):
+    for analysisId, samstatsfile in data:
         # output table  
         countsTable = os.path.join(analysisId, "counts.table")
 
@@ -162,9 +167,9 @@ def write_counts_tables(tar):
             writeSamstats(samOutfile, samstats, analysisId)
 
 
-def write_dist_tables(tar):
+def write_dist_tables(data):
     log("Writing distribution tables")
-    for analysisId, distfile in get_members_from_tar(tar, 'genome_cov'):
+    for analysisId, distfile in data:
         # output table 
         distTable = os.path.join(analysisId, "dist.table")
         
@@ -174,13 +179,14 @@ def write_dist_tables(tar):
             writeDistribution(distOutfile, distribution, analysisId, samstats["mapped"])
 
 
-def write_expression_tables(tar, annotationId):
+def write_expression_tables(data, annotationId, output_folder):
     log("Writing gene expression tables")
-    for analysisId, quantfile in get_members_from_tar(tar, 'RSEM.gene'):
+    for analysisId, quantfile in data:
         # output table
-        expTable = os.path.join(analysisId, "expression.table")
+        expTable = os.path.join(output_folder, analysisId, "expression.table")
         
         # write expression table
+        print("processing {}".format(analysisId))
         with open(expTable, "w") as quantOutfile:
             write_expression(analysisId, annotationId, quantfile, quantOutfile)
 
@@ -190,19 +196,24 @@ def main(argv):
     description = "RNAseq data from ENCODE evaluation"
     annotationId = "Gencodev16"
 
-    tarball_url = 'http://genome.crg.es/~epalumbo/ENCODE-benchmark-data.tgz'
-    tarball = get_tarball(tarball_url)
-    
-    tar = tarfile.open(tarball.name, mode='r')
+    host = "https://www.encodeproject.org"
+    dataset = "ENCSR000AJW"
+    url = "{host}/datasets/{dataset}/?frame=embedded".format(host=host, dataset=dataset)
+    headers = {
+        'Accept': 'application/json; charset=utf-8'
+    }
 
-    write_rnaseq_tables(tar, description, annotationId)
-    write_counts_tables(tar)
-    #TODO: get read distribution data
-    #write_dist_tables(tar)
-    write_expression_tables(tar, annotationId)
+    data_type = "genome quantifications"
+    output_folder = "data/rnaQuant"
+    subset = 4
 
-    tarball.close()
-    tar.close()
+    log("Downloading GA4GH test dataset - RNA Quantification API")
+    print("ENCODE dataset:" + bcolors.OKBLUE + " {}".format(dataset) + bcolors.ENDC)
+    print("data type:" + bcolors.OKBLUE + "      {}".format(data_type) + bcolors.ENDC)
+    if subset:
+        print("subset size:" + bcolors.OKBLUE + "    {}".format(str(subset)) + bcolors.ENDC)
+    print("output folder:" + bcolors.OKBLUE + "  {}".format(output_folder) + bcolors.ENDC)
+    get_data_from_host(url, headers, host, data_type, output_folder, description, annotationId, subset)
 
     log("DONE")
 
