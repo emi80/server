@@ -213,6 +213,10 @@ def write_expression_tables(data, annotationId, output_folder):
 
 def main(argv):
 
+    if len(argv) != 2:
+        print Color.red("Usage: {} <data-folder>".format(argv[0]))
+        sys.exit(1)
+
     description = "RNAseq data from ENCODE evaluation"
     annotationId = "Gencodev16"
 
@@ -224,7 +228,9 @@ def main(argv):
     }
 
     data_type = "genome quantifications"
-    output_folder = "data/rnaQuant"
+    data_folder = argv[1]
+    rna_folder = "rnaQuant"
+    output_folder = os.path.join(data_folder, rna_folder)
     subset = 4
 
     log("Downloading GA4GH test dataset - RNA Quantification API")
