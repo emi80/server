@@ -7,16 +7,36 @@ import json
 import errno
 import urllib2
 
-class bcolors:
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
+class Color:
+    """
+    Color printing in terminal
+    """
+
+    RED = '\033[91m'
+    BLUE = '\033[94m'
+    GREEN = '\033[92m'
+    NORMAL = '\033[0m'
+    YELLOW = '\033[93m'
+
+    @staticmethod
+    def red(astr):
+        return Color.RED + str(astr) + Color.NORMAL
+
+    @staticmethod
+    def green(astr):
+        return Color.GREEN + str(astr) + Color.NORMAL
+
+    @staticmethod
+    def yellow(astr):
+        return Color.YELLOW + str(astr) + Color.NORMAL
+
+    @staticmethod
+    def blue(astr):
+        return Color.BLUE + str(astr) + Color.NORMAL
 
 
 def log(message): 
-    print >>sys.stderr,  "== " + bcolors.OKGREEN + "{}".format(message) + bcolors.ENDC
+    print >>sys.stderr,  "== " + Color.green("{}".format(message))
 
 
 def get_files_from_host(data, host, output_type, request=False, subset=None):
@@ -208,11 +228,10 @@ def main(argv):
     subset = 4
 
     log("Downloading GA4GH test dataset - RNA Quantification API")
-    print("ENCODE dataset:" + bcolors.OKBLUE + " {}".format(dataset) + bcolors.ENDC)
-    print("data type:" + bcolors.OKBLUE + "      {}".format(data_type) + bcolors.ENDC)
-    if subset:
-        print("subset size:" + bcolors.OKBLUE + "    {}".format(str(subset)) + bcolors.ENDC)
-    print("output folder:" + bcolors.OKBLUE + "  {}".format(output_folder) + bcolors.ENDC)
+    print("ENCODE dataset: {}".format(Color.blue(dataset)))
+    print("data type:      {}".format(Color.blue(data_type)))
+    print("subset size:    {}".format(Color.blue(subset)))
+    print("output folder:  {}".format(Color.blue(output_folder)))
     get_data_from_host(url, headers, host, data_type, output_folder, description, annotationId, subset)
 
     log("DONE")
